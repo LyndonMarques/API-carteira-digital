@@ -5,57 +5,61 @@ namespace App\Services;
 use App\Models\Wallet;
 use App\Models\Transaction;
 use Illuminate\Support\Facades\DB;
-use Exception;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Database\QueryException;
 
 class WalletService
 {
     /**
-     * Processa uma transferência atômica P2P (Peer-to-Peer).
+     * Processa uma transferência atômica P2P (Peer-to-Peer) com controle manual de transação.
      */
     public function transfer(int $senderId, int $receiverId, string $amount, string $idempotencyKey): bool
     {
-        // Impede que um usuário transfira para si mesmo
+        // 1. Filtro de Borda (Fora da transação para economizar recursos do banco)
         if ($senderId === $receiverId) {
-            throw new Exception('Operação inválida.');
+            throw new \InvalidArgumentException('Operação inválida: não é possível transferir para si mesmo.');
         }
 
-        return DB::transaction(function () use ($senderId, $receiverId, $amount, $idempotencyKey) {
-            
-            // 1. PREVENÇÃO DE DEADLOCK: Ordena os IDs para travar sempre na mesma sequência
-            $firstLockId = min($senderId, $receiverId);
-            $secondLockId = max($senderId, $receiverId);
+        // 2. Assume o controle manual da transação
+        DB::beginTransaction();
 
-            Wallet::lockForUpdate()->findOrFail($firstLockId);
-            Wallet::lockForUpdate()->findOrFail($secondLockId);
+        try {
+            // PREVENÇÃO DE DEADLOCK: Ordena os user_ids
+            $firstUserId = min($senderId, $receiverId);
+            $secondUserId = max($senderId, $receiverId);
 
-            // 2. Agora busca as instâncias reais (já estão com lock no banco)
-            $senderWallet = Wallet::findOrFail($senderId);
-            $receiverWallet = Wallet::findOrFail($receiverId);
+            // BUSCA E LOCK SIMULTÂNEO
+            $firstWallet = Wallet::where('user_id', $firstUserId)->lockForUpdate()->firstOrFail();
+            $secondWallet = Wallet::where('user_id', $secondUserId)->lockForUpdate()->firstOrFail();
 
-            // 3. Validação
+            // MAPEAMENTO
+            $senderWallet = $firstWallet->user_id === $senderId ? $firstWallet : $secondWallet;
+            $receiverWallet = $firstWallet->user_id === $receiverId ? $firstWallet : $secondWallet;
+
+            // VALIDAÇÃO DE DOMÍNIO
             if ($senderWallet->balance < (float) $amount) {
-                throw new Exception('Saldo insuficiente.');
+                // Usando DomainException em vez de Exception genérica
+                throw new \DomainException('Saldo insuficiente para realizar a transferência.');
             }
 
-            // Captura o estado ANTES da mutação para o rastro limpo
             $senderBalanceBefore = $senderWallet->balance;
             $receiverBalanceBefore = $receiverWallet->balance;
 
-            // 4. Mutação
+            // MUTAÇÃO
             $senderWallet->balance -= (float) $amount;
             $receiverWallet->balance += (float) $amount;
-            
+
             $senderWallet->save();
             $receiverWallet->save();
 
-            // 5. O Livro Razão (Ledger) com chaves de idempotência únicas por operação
+            // LEDGER (Livro Razão)
             Transaction::create([
                 'wallet_id' => $senderWallet->id,
                 'amount' => $amount,
                 'type' => 'debit',
-                'payment_method_id' => 1, // Assumindo que 1 é "Transferência Interna". Ajuste a seu critério.
+                'payment_method_id' => 1,
                 'idempotency_key' => $idempotencyKey . '-out',
-                'metadata' => json_encode(['receiver_id' => $receiverWallet->id]),
+                'metadata' => ['receiver_id' => $receiverWallet->id], // O cast no Model cuida do json_encode
                 'balance_before' => $senderBalanceBefore,
                 'balance_after' => $senderWallet->balance,
                 'counterparty_id' => $receiverWallet->id,
@@ -65,15 +69,39 @@ class WalletService
                 'wallet_id' => $receiverWallet->id,
                 'amount' => $amount,
                 'type' => 'credit',
-                'payment_method_id' => 1, 
+                'payment_method_id' => 1,
                 'idempotency_key' => $idempotencyKey . '-in',
-                'metadata' => json_encode(['sender_id' => $senderWallet->id]),
+                'metadata' => ['sender_id' => $senderWallet->id],
                 'balance_before' => $receiverBalanceBefore,
                 'balance_after' => $receiverWallet->balance,
                 'counterparty_id' => $senderWallet->id,
             ]);
 
+            // 3. Efetivação
+            DB::commit();
+            
             return true;
-        });
+
+        } catch (QueryException $e) {
+            // Desfaz tudo imediatamente
+            DB::rollBack();
+            
+            // Intercepta violação de chave única (Idempotência falhou/Duplicidade)
+            // Código 1062 é padrão do MySQL para Duplicate Entry
+            if ($e->errorInfo[1] == 1062) {
+                Log::warning("Tentativa de duplicidade na transferência", ['idempotency_key' => $idempotencyKey]);
+                throw new \DomainException('Esta transferência já foi processada.');
+            }
+
+            // Repassa erros de banco não previstos
+            throw $e;
+
+        } catch (\Exception $e) {
+            // Desfaz qualquer alteração parcial em caso de erro de lógica ou saldo
+            DB::rollBack();
+            
+            // Repassa a exceção para o Controller lidar
+            throw $e;
+        }
     }
 }
