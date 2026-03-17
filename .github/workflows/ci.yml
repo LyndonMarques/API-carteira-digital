@@ -10,6 +10,12 @@ jobs:
   tests:
     runs-on: ubuntu-latest
 
+    # A REGRA DE OURO DA INFRAESTRUTURA: 
+    # Diz ao servidor para rodar todos os scripts dentro da pasta src/
+    defaults:
+      run:
+        working-directory: ./src
+
     steps:
       - name: 1. Checkout do Código
         uses: actions/checkout@v4
@@ -17,15 +23,16 @@ jobs:
       - name: 2. Configurar PHP 8.3
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.3' # O ajuste cirúrgico para refletir sua máquina
+          php-version: '8.3'
           extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite3, pdo_sqlite, bcmath, intl, gd
           coverage: none
 
       - name: 3. Cache do Composer
         uses: actions/cache@v3
         with:
-          path: vendor
-          key: ${{ runner.os }}-php-${{ hashFiles('**/composer.lock') }}
+          # Alterado para espelhar a sua arquitetura
+          path: src/vendor 
+          key: ${{ runner.os }}-php-${{ hashFiles('src/composer.lock') }} 
           restore-keys: |
             ${{ runner.os }}-php-
 
@@ -34,8 +41,8 @@ jobs:
 
       - name: 5. Forjar Ambiente de Testes
         run: |
-            cp .env.example .env
-            php artisan key:generate --env=testing
+          cp .env.example .env
+          php artisan key:generate --env=testing
 
       - name: 6. O Tribunal de Execução (Rodar Testes)
         env:
