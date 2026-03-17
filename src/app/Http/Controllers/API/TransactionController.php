@@ -17,12 +17,7 @@ class TransactionController extends Controller
     public function transfer(TransferRequest $request): JsonResponse
     {
         try {
-            $this->walletService->transfer(
-                $request->sender_id,
-                $request->receiver_id, 
-                $request->amount,
-                $request->idempotency_key
-            );
+            $this->walletService->transfer($request->toDTO());
 
             // Retornamos apenas a confirmação. Se precisar do recibo, 
             // o Service precisará ser alterado para retornar o objeto Transaction.

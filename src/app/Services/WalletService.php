@@ -7,16 +7,17 @@ use App\Models\Transaction;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Database\QueryException;
+use App\DTOs\TransferDTO;
 
 class WalletService
 {
     /**
      * Processa uma transferência atômica P2P (Peer-to-Peer) com controle manual de transação.
      */
-    public function transfer(int $senderId, int $receiverId, string $amount, string $idempotencyKey): bool
+    public function transfer(TransferDTO $dto): bool
     {
         // 1. Filtro de Borda (Fora da transação para economizar recursos do banco)
-        if ($senderId === $receiverId) {
+        if ($dto->senderId === $dto->receiverId) {
             throw new \InvalidArgumentException('Operação inválida: não é possível transferir para si mesmo.');
         }
 
@@ -25,19 +26,19 @@ class WalletService
 
         try {
             // PREVENÇÃO DE DEADLOCK: Ordena os user_ids
-            $firstUserId = min($senderId, $receiverId);
-            $secondUserId = max($senderId, $receiverId);
+            $firstUserId = min($dto->senderId, $dto->receiverId);
+            $secondUserId = max($dto->senderId, $dto->receiverId);
 
             // BUSCA E LOCK SIMULTÂNEO
             $firstWallet = Wallet::where('user_id', $firstUserId)->lockForUpdate()->firstOrFail();
             $secondWallet = Wallet::where('user_id', $secondUserId)->lockForUpdate()->firstOrFail();
 
             // MAPEAMENTO
-            $senderWallet = $firstWallet->user_id === $senderId ? $firstWallet : $secondWallet;
-            $receiverWallet = $firstWallet->user_id === $receiverId ? $firstWallet : $secondWallet;
+            $senderWallet = $firstWallet->user_id === $dto->senderId ? $firstWallet : $secondWallet;
+            $receiverWallet = $firstWallet->user_id === $dto->receiverId ? $firstWallet : $secondWallet;
 
             // VALIDAÇÃO DE DOMÍNIO
-            if ($senderWallet->balance < (float) $amount) {
+            if ($senderWallet->balance < $dto->amount) {
                 // Usando DomainException em vez de Exception genérica
                 throw new \DomainException('Saldo insuficiente para realizar a transferência.');
             }
@@ -46,8 +47,8 @@ class WalletService
             $receiverBalanceBefore = $receiverWallet->balance;
 
             // MUTAÇÃO
-            $senderWallet->balance -= (float) $amount;
-            $receiverWallet->balance += (float) $amount;
+            $senderWallet->balance -= $dto->amount;
+            $receiverWallet->balance += $dto->amount;
 
             $senderWallet->save();
             $receiverWallet->save();
@@ -55,11 +56,11 @@ class WalletService
             // LEDGER (Livro Razão)
             Transaction::create([
                 'wallet_id' => $senderWallet->id,
-                'amount' => $amount,
+                'amount' => $dto->amount,
                 'type' => 'debit',
-                'payment_method_id' => 1,
-                'idempotency_key' => $idempotencyKey . '-out',
-                'metadata' => ['receiver_id' => $receiverWallet->id], // O cast no Model cuida do json_encode
+                'payment_method_id' => $dto->paymentMethodId,
+                'idempotency_key' => $dto->idempotencyKey . '-out',
+                'metadata' => ['receiver_id' => $receiverWallet->id],
                 'balance_before' => $senderBalanceBefore,
                 'balance_after' => $senderWallet->balance,
                 'counterparty_id' => $receiverWallet->id,
@@ -67,10 +68,10 @@ class WalletService
 
             Transaction::create([
                 'wallet_id' => $receiverWallet->id,
-                'amount' => $amount,
+                'amount' => $dto->amount,
                 'type' => 'credit',
-                'payment_method_id' => 1,
-                'idempotency_key' => $idempotencyKey . '-in',
+                'payment_method_id' => $dto->paymentMethodId,
+                'idempotency_key' => $dto->idempotencyKey . '-in',
                 'metadata' => ['sender_id' => $senderWallet->id],
                 'balance_before' => $receiverBalanceBefore,
                 'balance_after' => $receiverWallet->balance,
@@ -89,7 +90,7 @@ class WalletService
             // Intercepta violação de chave única (Idempotência falhou/Duplicidade)
             // Código 1062 é padrão do MySQL para Duplicate Entry
             if ($e->errorInfo[1] == 1062) {
-                Log::warning("Tentativa de duplicidade na transferência", ['idempotency_key' => $idempotencyKey]);
+                Log::warning("Tentativa de duplicidade na transferência", ['idempotency_key' => $dto->idempotencyKey]);
                 throw new \DomainException('Esta transferência já foi processada.');
             }
 
