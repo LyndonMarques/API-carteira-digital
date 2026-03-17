@@ -28,9 +28,9 @@ jobs:
           coverage: none
 
       - name: 3. Cache do Composer
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
-          # Alterado para espelhar a sua arquitetura
+          # Alterado para espelhar a nova arquitetura
           path: src/vendor 
           key: ${{ runner.os }}-php-${{ hashFiles('src/composer.lock') }} 
           restore-keys: |
