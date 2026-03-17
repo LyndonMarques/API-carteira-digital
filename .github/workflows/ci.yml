@@ -1,0 +1,53 @@
+name: Laravel CI
+
+on:
+  push:
+    branches: [ "master", "develop" ]
+  pull_request:
+    branches: [ "master", "develop" ]
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+
+    # A REGRA DE OURO DA INFRAESTRUTURA: 
+    # Diz ao servidor para rodar todos os scripts dentro da pasta src/
+    defaults:
+      run:
+        working-directory: ./src
+
+    steps:
+      - name: 1. Checkout do Código
+        uses: actions/checkout@v4
+
+      - name: 2. Configurar PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite3, pdo_sqlite, bcmath, intl, gd
+          coverage: none
+
+      - name: 3. Cache do Composer
+        uses: actions/cache@v4
+        with:
+          # Alterado para espelhar a nova arquitetura
+          path: src/vendor 
+          key: ${{ runner.os }}-php-${{ hashFiles('src/composer.lock') }} 
+          restore-keys: |
+            ${{ runner.os }}-php-
+
+      - name: 4. Instalar Dependências
+        run: composer install --no-ansi --no-interaction --no-scripts --no-progress --prefer-dist
+
+      - name: 5. Forjar Ambiente de Testes
+        run: |
+          cp .env.example .env
+          php artisan key:generate --env=testing
+
+      - name: 6. O Tribunal de Execução (Rodar Testes)
+        env:
+          DB_CONNECTION: sqlite
+          DB_DATABASE: ":memory:"
+          CACHE_DRIVER: array
+          QUEUE_CONNECTION: sync
+        run: php artisan test
