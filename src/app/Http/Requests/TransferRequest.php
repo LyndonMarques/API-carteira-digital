@@ -18,6 +18,7 @@ class TransferRequest extends FormRequest
             'receiver_id'     => 'required|integer|exists:wallets,user_id|different:sender_id',
             'amount'          => 'required|numeric|min:0.01',
             'idempotency_key' => 'required|string', 
+            'payment_method_id' => 'required|integer|exists:payment_methods,id', // Validação rigorosa
         ];
     }
 
@@ -28,5 +29,19 @@ class TransferRequest extends FormRequest
             'amount.min'            => 'Operação bloqueada: o valor mínimo é R$ 0,01.',
             'receiver_id.exists'    => 'Operação bloqueada: a carteira de destino não existe.',
         ];
+    }
+
+    /**
+     * Transforma os dados validados em um DTO imutável.
+     */
+    public function toDTO(): \App\DTOs\TransferDTO
+    {
+        return new \App\DTOs\TransferDTO(
+            (int) $this->validated('sender_id'),
+            (int) $this->validated('receiver_id'),
+            (float) $this->validated('amount'),
+            (string) $this->validated('idempotency_key'),
+            (int) $this->validated('payment_method_id') // Propagação
+        );
     }
 }
