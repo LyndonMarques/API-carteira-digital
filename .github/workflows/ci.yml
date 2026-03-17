@@ -30,7 +30,7 @@ jobs:
             ${{ runner.os }}-php-
 
       - name: 4. Instalar Dependências
-        run: composer install -q --no-ansi --no-interaction --no-scripts --no-progress --prefer-dist
+        run: composer install --no-ansi --no-interaction --no-scripts --no-progress --prefer-dist
 
       - name: 5. Forjar Ambiente de Testes
         run: |
