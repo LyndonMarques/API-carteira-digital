@@ -53,8 +53,8 @@ class WalletService
             $senderWallet->save();
             $receiverWallet->save();
 
-            // LEDGER (Livro Razão)
-            Transaction::create([
+            // LEDGER (Livro Razão) - CAPTURANDO O OBJETO
+            $debitTransaction = Transaction::create([
                 'wallet_id' => $senderWallet->id,
                 'amount' => $dto->amount,
                 'type' => 'debit',
@@ -78,9 +78,18 @@ class WalletService
                 'counterparty_id' => $senderWallet->id,
             ]);
 
-            // 3. Efetivação
+            // 3. Efetivação no Banco (Ponto de não retorno)
             DB::commit();
             
+            try {
+                // Delega a carga pesada para o Redis isolando falhas de infraestrutura
+                \App\Jobs\ProcessTransferNotification::dispatch($debitTransaction->id);
+            } catch (\Exception $e) {
+                // Se o Redis falhar, logamos o erro, mas NÃO quebramos a transferência do usuário
+                Log::error("Falha ao despachar notificação da transferência {$debitTransaction->id}", ['error' => $e->getMessage()]);
+            }
+
+            // Respeita a assinatura public function transfer(): bool
             return true;
 
         } catch (QueryException $e) {
