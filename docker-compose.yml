@@ -3,17 +3,43 @@ services:
     build:
       context: .
       dockerfile: docker/php/Dockerfile
+    container_name: carteira_app
+    restart: unless-stopped
     volumes:
       - ./src:/var/www/html
-    #user: "1000:1000"
+    user: "1000:1000" # Permissões corrigidas
     depends_on:
       db:
-        condition: service_healthy # O 'pulo do gato' está aqui
+        condition: service_healthy
+      redis:
+        condition: service_started
     networks:
       - laravel-network
 
+  # O Operário Assíncrono (Processamento em Background)
+  worker:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    container_name: carteira_worker
+    restart: always
+    volumes:
+      - ./src:/var/www/html
+    user: "1000:1000"
+    # Sobrescreve o comportamento padrão do container para rodar a fila
+    command: php artisan queue:work redis --sleep=3 --tries=3 --timeout=90
+    depends_on:
+      redis:
+        condition: service_started
+      db:
+        condition: service_healthy
+    networks:
+      - laravel-network
+      
   web:
     image: nginx:alpine
+    container_name: carteira_web
+    restart: unless-stopped
     ports:
       - "8000:80"
     volumes:
@@ -27,6 +53,7 @@ services:
 
   db:
     image: mysql:8.0
+    container_name: carteira_db
     restart: always
     environment:
       MYSQL_DATABASE: laravel_app
@@ -41,7 +68,17 @@ services:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot"]
       interval: 5s
       timeout: 5s
-      retries: 10 # Dá até 50 segundos para o MySQL acordar
+      retries: 10
+
+  # A peça que faltava para escalar a API
+  redis:
+    image: redis:alpine
+    container_name: carteira_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    networks:
+      - laravel-network
 
 networks:
   laravel-network:
