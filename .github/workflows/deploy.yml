@@ -1,0 +1,40 @@
+name: Deploy API to Oracle Cloud
+
+on:
+  push:
+    branches:
+      - master # Se a sua branch principal for 'master', altere aqui.
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 1. Checkout do Código
+        uses: actions/checkout@v4
+
+      - name: 2. Transferência Segura (SCP)
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "."
+          target: "/home/ubuntu/api-producao"
+          rm: true # Previne acúmulo de lixo apagando arquivos antigos do alvo antes de copiar
+
+      - name: 3. Orquestração Docker (SSH)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /home/ubuntu/api-producao
+            
+            # Derruba containers antigos, força o rebuild das imagens e sobe em background
+            docker compose down
+            docker compose up -d --build
+            
+            # Faxina cirúrgica: apaga imagens órfãs para garantir que seu SSD de 46GB não lote em poucos meses
+            docker image prune -af
