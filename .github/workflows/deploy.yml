@@ -38,21 +38,21 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            set -e
-
-            RELEASE_DIR="/home/ubuntu/releases/${{ github.sha }}"
-            CURRENT_DIR="/home/ubuntu/api-producao"
-
-            # restore .env into the new release
-            cp /home/ubuntu/.env_producao "${RELEASE_DIR}/.env"
-
-            # atomically switch "current" to the new release
-            ln -sfn "${RELEASE_DIR}" "${CURRENT_DIR}"
-
-            cd "${CURRENT_DIR}"
-
+            # 1. Puxa a cópia intacta do .env do cofre para o diretório da aplicação
+            cp /home/ubuntu/.env_producao /home/ubuntu/api-producao/.env
+            
+            cd /home/ubuntu/api-producao
+            
+            # 2. Garante que as pastas do Laravel existam e tenham permissão correta 
+            # (evita o erro do bootstrap/cache e storage)
+            mkdir -p src/bootstrap/cache src/storage/framework/{sessions,views,cache} src/storage/logs
+            sudo chown -R 1000:1000 src/bootstrap/cache src/storage
+            sudo chmod -R 775 src/bootstrap/cache src/storage
+            
+            # 3. Reinicia os containers rapidamente para assumir o novo código
             docker compose up -d
             docker compose restart
-
+            
+            # 4. Estrutura o banco e limpa lixo
             docker exec carteira_app php artisan migrate --force
             docker image prune -af
