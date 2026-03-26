@@ -5,9 +5,10 @@ services:
       dockerfile: docker/php/Dockerfile
     container_name: carteira_app
     restart: unless-stopped
+    env_file: .env # Força a leitura das variáveis de ambiente na raiz
     volumes:
       - ./src:/var/www/html
-    user: "1000:1000" # Permissões corrigidas
+    user: "1000:1000"
     depends_on:
       db:
         condition: service_healthy
@@ -16,17 +17,16 @@ services:
     networks:
       - laravel-network
 
-  # O Operário Assíncrono (Processamento em Background)
   worker:
     build:
       context: .
       dockerfile: docker/php/Dockerfile
     container_name: carteira_worker
     restart: always
+    env_file: .env
     volumes:
       - ./src:/var/www/html
     user: "1000:1000"
-    # Sobrescreve o comportamento padrão do container para rodar a fila
     command: php artisan queue:work redis --sleep=3 --tries=3 --timeout=90
     depends_on:
       redis:
@@ -55,9 +55,10 @@ services:
     image: mysql:8.0
     container_name: carteira_db
     restart: always
+    env_file: .env # Puxa a senha daqui, nunca do texto plano
     environment:
       MYSQL_DATABASE: laravel_app
-      MYSQL_ROOT_PASSWORD: root
+      # A variável MYSQL_ROOT_PASSWORD deve estar no seu arquivo .env no servidor
     ports:
       - "3306:3306"
     volumes:
@@ -65,12 +66,11 @@ services:
     networks:
       - laravel-network
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
       interval: 5s
       timeout: 5s
       retries: 10
 
-  # A peça que faltava para escalar a API
   redis:
     image: redis:alpine
     container_name: carteira_redis
