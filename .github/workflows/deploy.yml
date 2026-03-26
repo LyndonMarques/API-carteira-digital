@@ -13,6 +13,15 @@ jobs:
       - name: 1. Checkout do Código
         uses: actions/checkout@v4
 
+      - name: 1.5 Setup PHP e Instalação de Dependências
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3' # Altere para a versão exata do seu projeto
+      
+      - name: Instalando Composer Dependencies
+        run: composer install -q --no-ansi --no-interaction --no-scripts --no-progress --prefer-dist --optimize-autoloader --no-dev
+        working-directory: ./src # Aponta para onde o seu composer.json está  
+
       - name: 2. Transferência Segura (SCP)
         uses: appleboy/scp-action@v0.1.7
         with:
