@@ -39,10 +39,17 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
+            # 1. Restaura o arquivo .env do cofre seguro
+            cp /home/ubuntu/.env_producao /home/ubuntu/api-producao/.env
+            
             cd /home/ubuntu/api-producao
             
+            # 2. Levanta e atualiza a infraestrutura instantaneamente
             docker compose up -d
             docker compose restart
             
-            # Faxina cirúrgica: apaga imagens órfãs para garantir que seu SSD de 46GB não lote em poucos meses
+            # 3. Executa as migrations automaticamente a cada deploy
+            docker exec carteira_app php artisan migrate --force
+            
+            # 4. Limpa o lixo
             docker image prune -af
