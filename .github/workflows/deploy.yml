@@ -41,9 +41,8 @@ jobs:
           script: |
             cd /home/ubuntu/api-producao
             
-            # Derruba containers antigos, força o rebuild das imagens e sobe em background
-            docker compose down
-            docker compose up -d --build
+            docker compose up -d
+            docker compose restart
             
             # Faxina cirúrgica: apaga imagens órfãs para garantir que seu SSD de 46GB não lote em poucos meses
             docker image prune -af
