@@ -30,7 +30,6 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           source: "."
           target: "/home/ubuntu/api-producao"
-          rm: true # Previne acúmulo de lixo apagando arquivos antigos do alvo antes de copiar
 
       - name: 3. Orquestração Docker (SSH)
         uses: appleboy/ssh-action@v1.0.3
@@ -39,17 +38,21 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            # 1. Restaura o arquivo .env do cofre seguro
-            cp /home/ubuntu/.env_producao /home/ubuntu/api-producao/.env
-            
-            cd /home/ubuntu/api-producao
-            
-            # 2. Levanta e atualiza a infraestrutura instantaneamente
+            set -e
+
+            RELEASE_DIR="/home/ubuntu/releases/${{ github.sha }}"
+            CURRENT_DIR="/home/ubuntu/api-producao"
+
+            # restore .env into the new release
+            cp /home/ubuntu/.env_producao "${RELEASE_DIR}/.env"
+
+            # atomically switch "current" to the new release
+            ln -sfn "${RELEASE_DIR}" "${CURRENT_DIR}"
+
+            cd "${CURRENT_DIR}"
+
             docker compose up -d
             docker compose restart
-            
-            # 3. Executa as migrations automaticamente a cada deploy
+
             docker exec carteira_app php artisan migrate --force
-            
-            # 4. Limpa o lixo
             docker image prune -af
