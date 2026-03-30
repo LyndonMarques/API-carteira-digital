@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 // ESTAS DUAS LINHAS SÃO OBRIGATÓRIAS PARA O RELACIONAMENTO FUNCIONAR
@@ -11,7 +10,7 @@ use App\Models\Wallet;
 
 class User extends Authenticatable
 {
-    use HasFactory, Notifiable;
+    use Notifiable;
 
     protected $fillable = ['name', 'email', 'password'];
 
@@ -26,7 +25,7 @@ class User extends Authenticatable
     }
 
     /**
-     * Relacionamento Um-para-Um com Wallet
+     * @return HasOne<Wallet, $this>
      */
     public function wallet(): HasOne
     {

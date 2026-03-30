@@ -12,4 +12,4 @@ Route::get('/teste', function () {
     return response()->json(['status' => 'OK']);
 });
 
-Route::post('/transfer', [TransactionController::class, 'transfer']);
+Route::middleware('throttle:transfers')->post('/transfer', [TransactionController::class, 'transfer']);

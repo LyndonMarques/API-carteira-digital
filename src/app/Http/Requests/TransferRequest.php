@@ -11,6 +11,9 @@ class TransferRequest extends FormRequest
         return true; // Em produção, aqui verificaríamos se o usuário logado é o dono da carteira
     }
 
+    /**
+     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
+    */
     public function rules(): array
     {
         return [

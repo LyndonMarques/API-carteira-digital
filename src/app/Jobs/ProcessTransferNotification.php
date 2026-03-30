@@ -13,9 +13,7 @@ class ProcessTransferNotification implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    protected $transferId;
-
-    public function __construct($transferId)
+    public function __construct(public int $transferId)
     {
         $this->transferId = $transferId;
     }

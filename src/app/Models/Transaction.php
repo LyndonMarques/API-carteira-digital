@@ -2,13 +2,10 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Transaction extends Model
 {
-    use HasFactory;
-
     protected $fillable = [
         'wallet_id',
         'amount',
@@ -21,10 +18,6 @@ class Transaction extends Model
         'counterparty_id'
     ];
 
-    /**
-     * O cast automático garante que o JSON do metadata vire um array no PHP
-     * e que os valores financeiros sejam tratados como decimais.
-     */
     protected function casts(): array
     {
         return [
